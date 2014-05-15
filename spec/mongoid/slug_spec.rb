@@ -1021,21 +1021,59 @@ module Mongoid
 
     context "Mongoid paranoia with mongoid slug model" do
 
-      let(:paranoid_doc) {ParanoidDocument.create!(:title => "slug")}
+      let(:paranoid_doc)   { ParanoidDocument.create!(:title => "slug") }
+      let(:paranoid_doc_2) { ParanoidDocument.create!(:title => "slug") }
+
+      # indices
+
+      # callback
+
+      # add shim for restore callback
+
 
       it "returns paranoid_doc for correct slug" do
         ParanoidDocument.find(paranoid_doc.slug).should eq(paranoid_doc)
       end
 
-      it "raises for deleted slug" do
+      it "retains slug value when deleted (callbacks are not fired)" do
         paranoid_doc.delete
-        expect{ParanoidDocument.find(paranoid_doc.slug)}.to raise_error(Mongoid::Errors::DocumentNotFound)
+        paranoid_doc.slug.should eq "slug"
+        ParanoidDocument.unscoped.find("slug").should eq paranoid_doc
       end
 
-      it "returns paranoid_doc for correct restored slug" do
-        paranoid_doc.delete
-        ParanoidDocument.deleted.first.restore
-        ParanoidDocument.find(paranoid_doc.slug).should eq(paranoid_doc)
+      it "unsets slug value when destroyed" do
+        paranoid_doc.destroy
+        paranoid_doc.reload.slug.should be_nil
+        ParanoidDocument.unscoped.exists(_slugs: false).first.should eq paranoid_doc
+        expect{ParanoidDocument.unscoped.find("slug")}.to raise_error(Mongoid::Errors::DocumentNotFound)
+      end
+
+      it "resets slug value when restored" do
+        paranoid_doc.destroy
+        paranoid_doc.reload.slug.should be_nil
+        paranoid_doc.restore
+        paranoid_doc.reload.slug.should eq "slug"
+      end
+
+      context "multiple documents" do
+
+        it "new documents should be able to use the slug of destroyed documents" do
+          paranoid_doc.slug.should eq "slug"
+          paranoid_doc.destroy
+          paranoid_doc.reload.slug.should be_nil
+          paranoid_doc_2.slug.should eq "slug"
+          paranoid_doc.restore
+          paranoid_doc.reload.slug.should eq "slug-1"
+        end
+
+        it "should allow multiple documents to be destroyed without index conflict" do
+          paranoid_doc.slug.should eq "slug"
+          paranoid_doc.destroy
+          paranoid_doc.reload.slug.should be_nil
+          paranoid_doc_2.slug.should eq "slug"
+          paranoid_doc_2.destroy
+          paranoid_doc_2.reload.slug.should be_nil
+        end
       end
     end
   end

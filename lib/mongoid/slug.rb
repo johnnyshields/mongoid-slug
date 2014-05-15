@@ -60,22 +60,12 @@ module Mongoid
         alias_attribute :slugs, :_slugs
 
         unless embedded?
-          if slug_scope
-            scope_key = (metadata = self.reflect_on_association(slug_scope)) ? metadata.key : slug_scope
-            if options[:by_model_type] == true
-              # Add _type to the index to fix polymorphism
-              index({ _type: 1, scope_key => 1, _slugs: 1})
-            else
-              index({scope_key => 1, _slugs: 1}, {unique: true, sparse: true})
-            end
-
-          else
-            # Add _type to the index to fix polymorphism
-            if options[:by_model_type] == true
-              index({_type: 1, _slugs: 1})
-            else
-              index({_slugs: 1}, {unique: true, sparse: true})
-            end
+          scope_key = slug_scope ? ((metadata = self.reflect_on_association(slug_scope)) ? metadata.key : slug_scope) : nil
+          paranoid = defined?(::Mongoid::Paranoia) && self < ::Mongoid::Paranoia
+          index(*Mongoid::Slug.index_args(scope_key, options[:by_model_type],  paranoid))
+          if paranoid
+            set_callback :destroy, :after, :unset_slugs
+            after_restore :build_slug
           end
         end
 
@@ -163,6 +153,10 @@ module Mongoid
       end
     end
 
+    def unset_slugs
+      unset(:_slugs)
+    end
+
     # Finds a unique slug, were specified string used to generate a slug.
     #
     # Returned slug will the same as the specified string when there are no
@@ -202,6 +196,28 @@ module Mongoid
       end
       #generate slug if the slug is not user defined or does not exist
       _cur_slug || pre_slug_string
+    end
+
+    # @return [ Array(Hash, Hash) ] the indexable fields and index options.
+    def self.index_args(scope_key = nil, by_model_type = false, paranoid = false)
+      fields  = {_slugs: 1}
+      options = {}
+
+      if scope_key
+        fields.merge!({scope_key => 1})
+      end
+
+      if by_model_type
+        fields.merge!({_type: 1})
+      else
+        options.merge!({unique: true, sparse: true})
+      end
+
+      if paranoid
+        fields.merge!({deleted_at: 1})
+      end
+
+      return [fields, options]
     end
 
     def self.mongoid3?
