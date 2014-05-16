@@ -7,6 +7,7 @@ end
 require 'rspec'
 require 'uuid'
 require 'awesome_print'
+require 'active_support'
 require 'mongoid'
 require 'mongoid/paranoia'
 

@@ -59,24 +59,9 @@ module Mongoid
         field :_slugs, type: Array, default: [], localize: options[:localize]
         alias_attribute :slugs, :_slugs
 
+        #-- Set index
         unless embedded?
-          if slug_scope
-            scope_key = (metadata = self.reflect_on_association(slug_scope)) ? metadata.key : slug_scope
-            if options[:by_model_type] == true
-              # Add _type to the index to fix polymorphism
-              index({ _type: 1, scope_key => 1, _slugs: 1})
-            else
-              index({scope_key => 1, _slugs: 1}, {unique: true, sparse: true})
-            end
-
-          else
-            # Add _type to the index to fix polymorphism
-            if options[:by_model_type] == true
-              index({_type: 1, _slugs: 1})
-            else
-              index({_slugs: 1}, {unique: true, sparse: true})
-            end
-          end
+          index(*Mongoid::Slug::Index.build_index(self.slug_scope_key, self.by_model_type, self.paranoid?))
         end
 
         #-- Why is it necessary to customize the slug builder?
@@ -93,10 +78,35 @@ module Mongoid
         else
           set_callback :save, :before, :build_slug, :if => :slug_should_be_rebuilt?
         end
+
+        #-- if paranoid document:
+        # - include callbacks shim
+        # - unset the slugs on destroy
+        # - recreate the slug on restore
+        if paranoid?
+          self.send(:include, Mongoid::Slug::Paranoia) unless self.respond_to?(:before_restore)
+          set_callback :destroy, :after, :unset_slug
+          set_callback :restore, :before, :build_slug
+        end
       end
 
       def look_like_slugs?(*args)
         with_default_scope.look_like_slugs?(*args)
+      end
+
+      # Indicates whether or not the document includes Mongoid::Paranoia
+      #
+      # @return [ Array<Document>, Document ] Whether the document is paranoid
+      def paranoid?
+        !!(defined?(::Mongoid::Paranoia) && self < ::Mongoid::Paranoia)
+      end
+
+      # Returns the scope key for indexing, considering associations
+      #
+      # @return [ Array<Document>, Document ] Whether the document is paranoid
+      def slug_scope_key
+        return nil unless self.slug_scope
+        self.reflect_on_association(self.slug_scope).try(:key) || self.slug_scope
       end
 
       # Find documents by slugs.
@@ -163,6 +173,11 @@ module Mongoid
       end
     end
 
+    def unset_slug
+      self._slugs = nil  # unset() does not set to nil in DB
+      unset(:_slugs)
+    end
+
     # Finds a unique slug, were specified string used to generate a slug.
     #
     # Returned slug will the same as the specified string when there are no
@@ -190,7 +205,7 @@ module Mongoid
 
     # @return [String] the slug, or nil if the document does not have a slug.
     def slug
-      return _slugs.last if _slugs
+      return _slugs.last if _slugs.present?
       return _id.to_s
     end
 
