@@ -86,7 +86,7 @@ module Mongoid
         if paranoid?
           self.send(:include, Mongoid::Slug::Paranoia) unless self.respond_to?(:before_restore)
           set_callback :destroy, :after, :unset_slug
-          set_callback :restore, :before, :build_slug
+          set_callback :restore, :before, ->{ build_slug; set_slug }
         end
       end
 
@@ -145,18 +145,18 @@ module Mongoid
           orig_locale = I18n.locale
           all_locales.each do |target_locale|
             I18n.locale = target_locale
-            set_slug
+            apply_slug
           end
         ensure
           I18n.locale = orig_locale
         end
       else
-        set_slug
+        apply_slug
       end
       true
     end
 
-    def set_slug
+    def apply_slug
       _new_slug = find_unique_slug
 
       #skip slug generation and use Mongoid id
@@ -173,9 +173,19 @@ module Mongoid
       end
     end
 
+    # Atomically sets the slug field in the database to its current value
+    # This is used when working with the Mongoid::Paranoia restore callback
+    def set_slug
+      set(:_slugs, self._slugs)
+    end
+
+    # Atomically unsets the slug field in the database. It is important to unset
+    # the field for the sparse index on slugs.
+    #
+    # This also resets the in-memory value of the slug field to its default (empty array)
     def unset_slug
-      self._slugs = nil  # unset() does not set to nil in DB
       unset(:_slugs)
+      self._slugs = []
     end
 
     # Finds a unique slug, were specified string used to generate a slug.
@@ -205,7 +215,7 @@ module Mongoid
 
     # @return [String] the slug, or nil if the document does not have a slug.
     def slug
-      return _slugs.last if _slugs.present?
+      return _slugs.last if _slugs
       return _id.to_s
     end
 

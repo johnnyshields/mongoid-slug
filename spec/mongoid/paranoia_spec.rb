@@ -6,6 +6,7 @@ describe "Mongoid::Paranoia with Mongoid::Slug" do
   let(:paranoid_doc)    { ParanoidDocument.create!(:title => "slug") }
   let(:paranoid_doc_2)  { ParanoidDocument.create!(:title => "slug") }
   let(:non_paranoid_doc){ Article.create!(:title => "slug") }
+  subject{ paranoid_doc }
 
   describe ".paranoid?" do
 
@@ -47,54 +48,62 @@ describe "Mongoid::Paranoia with Mongoid::Slug" do
   context "querying" do
 
     it "returns paranoid_doc for correct slug" do
-      ParanoidDocument.find(paranoid_doc.slug).should eq(paranoid_doc)
+      ParanoidDocument.find(subject.slug).should eq(subject)
     end
   end
 
-  context "deleting (callbacks are not fired)" do
+  context "delete (callbacks not fired)" do
 
-    before { paranoid_doc.delete }
+    before { subject.delete }
 
     it "retains slug value" do
-      paranoid_doc.slug.should eq "slug"
-      ParanoidDocument.unscoped.find("slug").should eq paranoid_doc
+      subject.slug.should eq "slug"
+      ParanoidDocument.unscoped.find("slug").should eq subject
     end
   end
 
-  context "destroying" do
+  context "destroy" do
 
-    before { paranoid_doc.destroy }
+    before { subject.destroy }
 
     it "unsets slug value when destroyed" do
-      paranoid_doc._slugs.should be_nil
-      paranoid_doc.slug.should eq paranoid_doc._id
+      subject._slugs.should eq []
+      subject.slug.should be_nil
     end
 
     it "persists the removed slug" do
-      paranoid_doc._slugs.should be_nil
-      paranoid_doc.reload.slug.should eq paranoid_doc._id
-      ParanoidDocument.unscoped.exists(_slugs: false).first.should eq paranoid_doc
+      subject.reload._slugs.should eq []
+      subject.reload.slug.should be_nil
+    end
+
+    it "persists the removed slug in the database" do
+      ParanoidDocument.unscoped.exists(_slugs: false).first.should eq subject
       expect{ParanoidDocument.unscoped.find("slug")}.to raise_error(Mongoid::Errors::DocumentNotFound)
     end
+
+    context "when saving the doc again" do
+
+      before { subject.save }
+
+      it "the slug remains unset in the database" do
+        ParanoidDocument.unscoped.exists(_slugs: false).first.should eq subject
+        expect{ParanoidDocument.unscoped.find("slug")}.to raise_error(Mongoid::Errors::DocumentNotFound)
+      end
+    end
   end
 
-  context "restoring" do
-    before do
-      paranoid_doc.destroy
-      paranoid_doc = paranoid_doc.reload
-      paranoid_doc.restore
-    end
+  context "restore" do
 
+    before do
+      subject.destroy
+      subject.restore
+    end
 
     it "resets slug value when restored" do
-      paranoid_doc.save
-      paranoid_doc.slug.should eq "slug"
-      paranoid_doc.reload.slug.should eq "slug"
+      subject.slug.should eq "slug"
+      subject.reload.slug.should eq "slug"
     end
   end
-
-
-
 
   context "multiple documents" do
 
