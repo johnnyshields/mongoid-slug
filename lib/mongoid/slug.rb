@@ -61,7 +61,7 @@ module Mongoid
 
         #-- Set index
         unless embedded?
-          index(*Mongoid::Slug::Index.build_index(self.slug_scope_key, self.by_model_type, self.paranoid?))
+          index(*Mongoid::Slug::Index.build_index(self.slug_scope_key, self.by_model_type, self.is_paranoid_doc?))
         end
 
         #-- Why is it necessary to customize the slug builder?
@@ -83,7 +83,7 @@ module Mongoid
         # - include callbacks shim
         # - unset the slugs on destroy
         # - recreate the slug on restore
-        if paranoid?
+        if is_paranoid_doc?
           self.send(:include, Mongoid::Slug::Paranoia) unless self.respond_to?(:before_restore)
           set_callback :destroy, :after, :unset_slug
           set_callback :restore, :before, ->{ build_slug; set_slug }
@@ -96,8 +96,12 @@ module Mongoid
 
       # Indicates whether or not the document includes Mongoid::Paranoia
       #
+      # This can be replaced with .paranoid? method once the following PRs are merged:
+      # - https://github.com/simi/mongoid-paranoia/pull/19
+      # - https://github.com/haihappen/mongoid-paranoia/pull/3
+      #
       # @return [ Array<Document>, Document ] Whether the document is paranoid
-      def paranoid?
+      def is_paranoid_doc?
         !!(defined?(::Mongoid::Paranoia) && self < ::Mongoid::Paranoia)
       end
 
