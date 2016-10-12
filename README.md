@@ -100,7 +100,7 @@ Configure a block in `config/initializers/mongoid_slug.rb` as follows:
 ```ruby
 Mongoid::Slug.configure do |c|
   # create a block that takes the current object as an argument and return the slug
-  c.slug = proc { |cur_obj|
+  c.slug = proc { |cur_object|
     cur_object.slug_builder.to_url
   }
 end
